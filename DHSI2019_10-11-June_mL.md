@@ -87,7 +87,10 @@ You have load libraries every time you start R
 
 R markdown code blocks are executable in the console editor. 
 
-`c()` concatenates  
+`c()` concatenates
+
+
+Discussion of sentiment analysis lexicons: some created with Mechanical Turk, employing people around the world to rate and categorize sentiment of words according to their systems.
 
 
 
