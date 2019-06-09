@@ -1,0 +1,239 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(stringr)
+library(gutenbergr)
+library(tidyverse)
+library(scales)
+library(gmodels)
+```
+
+# H.G. Wells and Bront&euml; sisters
+## Data Wrangling and Statistical Analysis
+
+H. G. Wells books: The Time Machine, The War of the Worlds, The Invisible Man, and The Island of Doctor Moreau. 
+
+```{r}
+# Download HG Wells books from Gutenberg
+hgwells <- gutenberg_download(c(35, 36, 5230, 159))
+tidy_hgwells <- hgwells %>%
+  # the text of the four HG Wells books are separated into word tokens
+  unnest_tokens(word, text) %>% 
+  # anti_join with stop_words removes stop words
+  anti_join(stop_words)
+```
+
+Are any words not lowercase characters that may be in single quotes?
+
+The function `str_detect()` can detect the presence or absence of a pattern in a string.
+
+The pattern `[a-z']+` is another **regular expression**.  What does it mean?
+
+```{r}
+sum(str_detect(tidy_hgwells$word, "[a-z']+") == FALSE)
+```
+
+What are the most common words in these novels?
+
+```{r}
+tidy_hgwells <- tidy_hgwells %>% mutate(word = str_extract(word, "[a-z']+")) %>% 
+  count(word,sort = T) 
+tidy_hgwells
+```
+
+OK, lets do the same thing with all the texts of the Brontë sisters. How could we do this?
+
+
+```{r}
+
+#Write your code to download Bronte sisters texts here
+#Store the Bronte books in a variable called 'bronte' & your tokens in 'tidy_bronte'
+
+bronte <- gutenberg_download(c(1260, 768, 969, 9182, 767))
+tidy_bronte <- bronte %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+
+```
+
+What are the most common words in these novels of the Bront&euml; sisters?
+
+```{r}
+tidy_bronte <- tidy_bronte  %>% mutate(word = str_extract(word, "[a-z']+")) %>% 
+  count(word,sort = T) 
+tidy_bronte
+```
+
+Let's calculate the relative frequencies for each word for the works of Jane Austen and the Bront&euml; sisters and plot.
+
+```{r,cache=TRUE}
+comparison <- tidy_bronte %>% inner_join(tidy_hgwells,by="word")  %>% mutate(freq_bronte=n.x/sum(n.x),freq_wells=n.y/sum(n.y))
+ggplot(comparison, aes(freq_bronte,freq_wells)) + geom_point() + 
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1, hjust = 1) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  geom_abline(color = "red")
+```
+
+What have we plotted? How can we interpret this plot? Is it meaningful? 
+
+All the words that appear in both texts.  But, among all words in the text how many appear in one text and not the other?
+
+```{r}
+comparison_all <-
+  tidy_bronte %>% full_join(tidy_hgwells, by = "word") %>%
+  mutate(br_in = if_else(is.na(n.x), 0, 1),
+  well_in = if_else(is.na(n.y), 0, 1))
+  with(comparison_all, CrossTable(br_in, well_in, prop.chisq = F))
+```
+
+How do we interpret this table? What is it telling us?
+
+
+This table tells us that there are 11,710 words in Well's works, and 8,307 (71%) of these words appear in Bront&euml; sisters works.  Conversely, there are 22,678 words that appear in Bront&euml; sisters' works and 8,307 (37%) of these words appear in Well's works.  
+
+- If a word is randomly selected in one of the Well's novels then there is a 0.71 chance that it will also appear in the Bront&euml; sisters works.  This is also called the conditional probability that the word appears in Bront&euml; sisters *given that* it appears in Wells.
+
+- If a word is randomly selected in one of the Bront&euml; sisters works then there is a 0.37 chance that it will also appear in the Well's novels.  This is also called the conditional probability that the word appears in Wells *given that* it appears in Bront&euml; sisters.
+
+Did Wells influence the Bront&euml; sisters?
+
+## Term Frequency
+
+The term frequency in a document is number of times a term $\text t$ occurs in document $\text d$,
+
+$$\text{tf}_\text{t,d}.$$ 
+
+## Inverse Document Frequency
+
+- The inverse document frequency (IDF) is a statistical weight used for measuring the importance of a term in a text document collection. The document frequency DF of a term is defined by the number of documents in which a term appears.
+
+- Karen Sparck-Jones first proposed that terms with low document frequency are more valuable than terms with high document frequency during retrieval (Sparck-Jones K., 1972.). 
+
+- In other words, the underlying idea of IDF is that the more frequently the term appears in the collection, the less informative the term is. Is this intuitively true? Always true? 
+
+The *inverse document frequency* of a term $\text t$ is,
+
+$$\text{idf}_\text{t}=\log\left(\frac{N}{\text{df}_\text{t}}\right).$$ 
+
+$N$ is the total number of documents in a collection (or corpus) of documents, and $\text{df}_\text{t}$ is the number of documents in a collection that contain the term $\text t$.
+
+## N-Grams
+
+A unit of textual analysis, where N is some number. Bigrams: N = 2. Trigrams: N = 3.
+
+# Jane Austen's novels
+
+Let's calculate some of these things by looking at Jane Austen's novels. 
+
+
+```{r}
+library(janeaustenr)
+book_words <- austen_books() %>%
+  unnest_tokens(word, text) %>%
+  count(book, word, sort = TRUE) %>%
+  ungroup()
+total_words <- book_words %>% 
+  group_by(book) %>% 
+  summarize(total = sum(n))
+book_words <- left_join(book_words, total_words)
+book_words
+```
+
+Uh-oh!
+
+Let's look at some Jane Austen n-grams:
+
+```{r}
+
+austen_bigrams <- austen_books() %>% unnest_tokens(bigram, text, token = "ngrams", n = 2)
+austen_quadgrams <- austen_books() %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)
+austen_quadgrams
+
+austen_bigrams %>% count(bigram, sort = TRUE)
+austen_quadgrams %>% count(quadgram, sort = TRUE)
+
+austen_quadgrams
+```
+
+Let's count the most common bigrams in Austen's work:
+
+```{r}
+bigrams_separated <- austen_bigrams %>% separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>% filter(!word1 %in% stop_words$word) %>% filter(!word2 %in% stop_words$word)
+
+bigram_counts <- bigrams_filtered %>% count(word1, word2, sort = TRUE)
+
+bigram_counts
+```
+
+Now let's try mapping the counts of these bigrams in relation to TF-IDF:
+
+```{r}
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigram_tf_idf <- bigrams_united %>%
+  count(book, bigram) %>%
+  bind_tf_idf(bigram, book, n) %>%
+  arrange(desc(tf_idf))
+
+bigram_tf_idf
+```
+
+## Tf-idf Weighting
+
+A weight for each term in each document is given by multiplying term frequency and inverse document frequency.
+
+$$\text{tf-idf}_\text{t,d}= \text{tf}_\text{t,d} \times \log\left(\frac{N}{\text{df}_\text{t}}\right).$$
+
+Some properties of Tf-idf [(see Manning et al.)](https://nlp.stanford.edu/IR-book/html/htmledition/tf-idf-weighting-1.html):
+
+1. highest when $t$ occurs many times within a small number of documents (thus lending high discriminating power to those documents);
+2. lower when the term occurs fewer times in a document, or occurs in many documents (thus offering a less pronounced relevance signal);
+
+3. lowest when the term occurs in virtually all documents.
+
+# Jane Austen's novels
+
+```{r}
+book_words <- austen_books() %>%
+  unnest_tokens(word, text) %>%
+  count(book, word, sort = TRUE) %>%
+  ungroup()
+
+total_words <- book_words %>% 
+  group_by(book) %>% 
+  summarize(total = sum(n))
+
+book_words <- left_join(book_words, total_words)
+
+book_words
+```
+
+- One row for each word-book combination.
+
+We can calculate tf-idf for the Jane Austen novels.
+
+```{r}
+book_words <- book_words %>% bind_tf_idf(word, book, n)
+book_words
+```
+
+Let's look at terms with high tf-idf in Jane Austen's works.
+
+```{r}
+book_words %>%
+  dplyr::select(-total) %>%
+  arrange(desc(tf_idf))
+```
+
